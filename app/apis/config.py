@@ -11,6 +11,7 @@ class APIConfiguration(BaseSettings):
     VIACEP_URL: str
     LOCATIONIQ_URL: str
     OVERPASS_URL: str
+    TOMTOM_KEY: str
 
 
 api_settings = APIConfiguration()
