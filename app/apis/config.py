@@ -9,6 +9,8 @@ _base_config = SettingsConfigDict(
 class APIConfiguration(BaseSettings):
     model_config = _base_config
     VIACEP_URL: str
+    LOCATIONIQ_URL: str
+    OVERPASS_URL: str
 
 
 api_settings = APIConfiguration()
