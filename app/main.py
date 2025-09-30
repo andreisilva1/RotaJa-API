@@ -46,7 +46,8 @@ async def formatar_cep(cep: str, numero: str = Query(None)):
 
 
 @app.get("/latitude_longitude/{endereco_completo}")
-async def obter_coordenadas(endereco_completo: str):
+async def obter_coordenadas(cep: str, numero: str = Query(None)):
+    endereco_completo = await formatar_cep(cep, numero)
     response = requests.get(f"{settings.LOCATIONIQ_URL}{endereco_completo}&format=json")
     if response.status_code == 200:
         coordenadas = response.json()
@@ -92,8 +93,8 @@ async def pontos_de_referencia(
         )
 
 
-@app.get("/trafico/{cep}")
-async def retornar_trafico(cep: str):
+@app.get("/trafego/{cep}")
+async def retornar_trafego(cep: str):
     endereco_completo = await formatar_cep(cep)
     coordenadas = await obter_coordenadas(endereco_completo)
     longitude, latitude = coordenadas["lon"], coordenadas["lat"]
@@ -147,3 +148,42 @@ async def retornar_trafico(cep: str):
         "incidentes_registrados": dados_incidentes,
         "taxa_de_congestionamento": dados_congestionamento,
     }
+
+
+@app.get("/trajeto_simples")
+async def calcular_trajeto_simples(
+    cep_origem: str,
+    cep_destino: str,
+    numero_origem: str = Query(None),
+    numero_destino: str = Query(None),
+):
+    coordenadas_origem = await obter_coordenadas(cep_origem, numero_origem)
+    coordenadas_destino = await obter_coordenadas(cep_destino, numero_destino)
+    informacoes_trajeto = requests.get(
+        f"https://api.tomtom.com/routing/1/calculateRoute/{coordenadas_origem['lat']},{coordenadas_origem['lon']}:{coordenadas_destino['lat']},{coordenadas_destino['lon']}/json?traffic=true&travelMode=car&key={settings.TOMTOM_KEY}"
+    )
+
+    if informacoes_trajeto.status_code == 200:
+        trajeto_json = informacoes_trajeto.json()
+        trajeto_formatado = {
+            "distancia_em_km": formatar_numero(
+                str(trajeto_json["routes"][0]["summary"]["lengthInMeters"] / 1000)
+            ),
+            "tempo_estimado_em_minutos": ceil(
+                trajeto_json["routes"][0]["summary"]["travelTimeInSeconds"] / 60
+            ),
+            "veiculo_exemplo": trajeto_json["routes"][0]["sections"][0]["travelMode"],
+        }
+        return trajeto_formatado
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Falha na API: Erro ao buscar informações do trajeto - {informacoes_trajeto.status_code}",
+        )
+
+
+def formatar_numero(texto: str):
+    texto = texto.replace(".", "&")
+    texto = texto.replace(",", ".")
+    texto = texto.replace("&", ",")
+    return texto
