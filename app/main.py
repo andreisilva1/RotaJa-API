@@ -182,8 +182,107 @@ async def calcular_trajeto_simples(
         )
 
 
+@app.get("/trajeto_completo")
+async def calcular_trajeto_completo(
+    cep_origem: str,
+    cep_destino: str,
+    numero_origem: str = Query(None),
+    numero_destino: str = Query(None),
+):
+    coordenadas_origem = await obter_coordenadas(cep_origem, numero_origem)
+    coordenadas_destino = await obter_coordenadas(cep_destino, numero_destino)
+    informacoes_trajeto = requests.get(
+        f"https://api.tomtom.com/routing/1/calculateRoute/{coordenadas_origem['lat']},{coordenadas_origem['lon']}:{coordenadas_destino['lat']},{coordenadas_destino['lon']}/json?traffic=true&travelMode=car&key={settings.TOMTOM_KEY}"
+    )
+
+    if informacoes_trajeto.status_code == 200:
+        trajeto_json = informacoes_trajeto.json()
+        trajeto_formatado = {
+            "distancia_em_km": formatar_numero(
+                str(trajeto_json["routes"][0]["summary"]["lengthInMeters"] / 1000)
+            ),
+            "tempo_estimado_em_minutos": ceil(
+                trajeto_json["routes"][0]["summary"]["travelTimeInSeconds"] / 60
+            ),
+            "veiculo_exemplo": trajeto_json["routes"][0]["sections"][0]["travelMode"],
+        }
+
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Falha na API: Erro ao buscar informações do trajeto - {informacoes_trajeto.status_code}",
+        )
+
+    trechos = []
+    rota_filtrada = comprimir_pontos_da_rota(
+        trajeto_json["routes"][0]["legs"][0]["points"]
+    )
+    for ponto in rota_filtrada:
+        response = requests.get(
+            f"{settings.LOCATIONIQ_REVERSE_GEOCODING_URL}{settings.LOCATIONIQ_KEY}&lat={ponto['latitude']}&lon={ponto['longitude']}&format=json"
+        )
+        trechos.append(response.json())
+
+    trechos_filtrados = []
+    for trecho in trechos:
+        trecho_filtrado = {
+            "rua": trecho.get("address", {}).get("road", "não fornecido"),
+            "bairro": trecho.get("address", {}).get("neighbourhood", "não fornecido"),
+            "cidade": trecho.get("address", {}).get("town", "não fornecido"),
+            "estado": trecho.get("address", {}).get("state", "não fornecido"),
+            "cep": trecho.get("address", {}).get("postcode", "não fornecido"),
+        }
+        if trecho_filtrado["rua"] != "não fornecido":
+            (
+                trechos_filtrados.append(trecho_filtrado)
+                if not trechos_filtrados
+                or not any(
+                    trecho_filtrado["rua"] == trecho["rua"]
+                    for trecho in trechos_filtrados
+                )
+                else None
+            )
+        else:
+            trechos_filtrados.append(trecho_filtrado)
+
+    return {"informacoes_trajeto": informacoes_trajeto, "rota": trechos_filtrados}
+
+
 def formatar_numero(texto: str):
     texto = texto.replace(".", "&")
     texto = texto.replace(",", ".")
     texto = texto.replace("&", ",")
     return texto
+
+
+def comprimir_pontos_da_rota(pontos, max_ceps: int = 30):
+    n = len(pontos)
+    if n == 0:
+        return []
+    if n <= max_ceps:
+        return pontos.copy()
+
+    k = max_ceps
+    step = (n - 1) / (k - 1)
+    indices = []
+    for i in range(k):
+        idx = int(round(i * step))
+        if idx < 0:
+            idx = 0
+        elif idx > n - 1:
+            idx = n - 1
+        indices.append(idx)
+
+    seen = set()
+    unique_indices = []
+    for idx in indices:
+        if idx not in seen:
+            seen.add(idx)
+            unique_indices.append(idx)
+    if unique_indices[0] != 0:
+        unique_indices.insert(0, 0)
+    if unique_indices[-1] != n - 1:
+        unique_indices.append(n - 1)
+
+    filtrado = [pontos[i] for i in unique_indices]
+    return filtrado

@@ -10,8 +10,11 @@ class APIConfiguration(BaseSettings):
     model_config = _base_config
     VIACEP_URL: str
     LOCATIONIQ_URL: str
+    LOCATIONIQ_KEY: str
     OVERPASS_URL: str
     TOMTOM_KEY: str
+    LOCATIONIQ_REVERSE_GEOCODING_URL: str
+    WEATHER_API_KEY: str
 
 
 api_settings = APIConfiguration()
