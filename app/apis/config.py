@@ -13,8 +13,10 @@ class APIConfiguration(BaseSettings):
     LOCATIONIQ_KEY: str
     OVERPASS_URL: str
     TOMTOM_KEY: str
+    TOMTOM_URL: str
     LOCATIONIQ_REVERSE_GEOCODING_URL: str
     WEATHER_API_KEY: str
+    WEATHER_API_URL: str
 
 
 api_settings = APIConfiguration()

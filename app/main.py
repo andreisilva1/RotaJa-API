@@ -1,10 +1,13 @@
+from datetime import datetime
 from math import ceil
 from fastapi import FastAPI, HTTPException, Query, status
 import requests
 from scalar_fastapi import get_scalar_api_reference
 from .apis.config import api_settings as settings
+from googletrans import Translator
 
 app = FastAPI()
+translator = Translator()
 
 
 @app.get("/scalar", include_in_schema=False)
@@ -20,7 +23,7 @@ async def buscar_cep(cep: str):
     else:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Falha na API: Erro ao obter endereço - {response.status_code}.",
+            detail=f"Falha na API: Erro ao buscar CEP - {response.status_code}.",
         )
 
 
@@ -45,7 +48,7 @@ async def formatar_cep(cep: str, numero: str = Query(None)):
         )
 
 
-@app.get("/latitude_longitude/{endereco_completo}")
+@app.get("/coordenadas/{cep}")
 async def obter_coordenadas(cep: str, numero: str = Query(None)):
     endereco_completo = await formatar_cep(cep, numero)
     response = requests.get(f"{settings.LOCATIONIQ_URL}{endereco_completo}&format=json")
@@ -95,8 +98,8 @@ async def pontos_de_referencia(
 
 @app.get("/trafego/{cep}")
 async def retornar_trafego(cep: str):
-    endereco_completo = await formatar_cep(cep)
-    coordenadas = await obter_coordenadas(endereco_completo)
+    coordenadas = await obter_coordenadas(cep, numero=None)
+
     longitude, latitude = coordenadas["lon"], coordenadas["lat"]
     minY = coordenadas["bounding_box"][0]
     maxY = coordenadas["bounding_box"][1]
@@ -126,19 +129,23 @@ async def retornar_trafego(cep: str):
         dados_incidentes = {
             "erro": f"Falha na API: Erro ao processar indicentes - {incidentes.status_code}"
         }
-    congestionamento = congestionamento.json()
     if congestionamento.status_code == 200:
+        dados_congestionamento = congestionamento.json()
         dados_congestionamento = {
-            "velocidadeAtual": congestionamento["flowSegmentData"]["currentSpeed"],
-            "velocidadeLivre": congestionamento["flowSegmentData"]["freeFlowSpeed"],
+            "velocidadeAtual": dados_congestionamento["flowSegmentData"][
+                "currentSpeed"
+            ],
+            "velocidadeLivre": dados_congestionamento["flowSegmentData"][
+                "freeFlowSpeed"
+            ],
             "tempoAproximado_em_VelocidadeAtual_minutos": ceil(
-                congestionamento["flowSegmentData"]["currentTravelTime"] / 60
+                dados_congestionamento["flowSegmentData"]["currentTravelTime"] / 60
             ),
             "tempoAproximado_em_VelocidadeLivre_minutos": ceil(
-                congestionamento["flowSegmentData"]["freeFlowTravelTime"] / 60
+                dados_congestionamento["flowSegmentData"]["freeFlowTravelTime"] / 60
             ),
-            "confiabilidade": congestionamento["flowSegmentData"]["confidence"],
-            "rua_fechada": congestionamento["flowSegmentData"]["roadClosure"],
+            "confiabilidade": dados_congestionamento["flowSegmentData"]["confidence"],
+            "rua_fechada": dados_congestionamento["flowSegmentData"]["roadClosure"],
         }
     else:
         dados_congestionamento = {
@@ -188,16 +195,24 @@ async def calcular_trajeto_completo(
     cep_destino: str,
     numero_origem: str = Query(None),
     numero_destino: str = Query(None),
+    dias_previsao_clima: int = 14,
 ):
+    if dias_previsao_clima < 1 or dias_previsao_clima > 14:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"1 à 14 dias de previsão esperado, informado: {dias_previsao_clima}. Informe um valor válido ou deixe em branco para retornar a previsão dos próximos 14 dias.",
+        )
+
     coordenadas_origem = await obter_coordenadas(cep_origem, numero_origem)
     coordenadas_destino = await obter_coordenadas(cep_destino, numero_destino)
+
     informacoes_trajeto = requests.get(
         f"https://api.tomtom.com/routing/1/calculateRoute/{coordenadas_origem['lat']},{coordenadas_origem['lon']}:{coordenadas_destino['lat']},{coordenadas_destino['lon']}/json?traffic=true&travelMode=car&key={settings.TOMTOM_KEY}"
     )
 
     if informacoes_trajeto.status_code == 200:
         trajeto_json = informacoes_trajeto.json()
-        trajeto_formatado = {
+        informacoes_basicas_trajeto = {
             "distancia_em_km": formatar_numero(
                 str(trajeto_json["routes"][0]["summary"]["lengthInMeters"] / 1000)
             ),
@@ -244,8 +259,38 @@ async def calcular_trajeto_completo(
             )
         else:
             trechos_filtrados.append(trecho_filtrado)
+    for trecho in trechos_filtrados:
+        previsao_clima = []
+        if trecho["cep"] != "não fornecido":
+            trafego_atual = await retornar_trafego(trecho["cep"].replace("-", ""))
+            trecho["trafego"] = trafego_atual
+            cep_infos = await buscar_cep(trecho["cep"])
 
-    return {"informacoes_trajeto": informacoes_trajeto, "rota": trechos_filtrados}
+            cidade = cep_infos.get("localidade")
+            response = requests.get(
+                f"{settings.WEATHER_API_URL}{cidade}&days={dias_previsao_clima}&key={settings.WEATHER_API_KEY}"
+            )
+
+            clima = response.json()
+            for dia in clima["forecast"]["forecastday"]:
+                clima_esperado = await translator.translate(
+                    dia["day"]["condition"]["text"], src="en", dest="pt"
+                )
+                data_nao_formatada = datetime.strptime(dia["date"], "%Y-%m-%d")
+                clima_dia = {
+                    "data": data_nao_formatada.strftime("%d/%m/%Y"),
+                    "temp_maxima": formatar_numero(str(dia["day"]["maxtemp_c"])),
+                    "temp_minima": formatar_numero(str(dia["day"]["mintemp_c"])),
+                    "temp_media": formatar_numero(str(dia["day"]["avgtemp_c"])),
+                    "clima_esperado": clima_esperado.text,
+                }
+                previsao_clima.append(clima_dia)
+            trecho["clima"] = previsao_clima
+
+    return {
+        "informacoes_basicas": informacoes_basicas_trajeto,
+        "rota": trechos_filtrados,
+    }
 
 
 def formatar_numero(texto: str):
