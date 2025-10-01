@@ -10,3 +10,4 @@ class Trajeto(SQLModel, table=True):
     )
     senha: str
     dados_trajeto: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    insights: dict = Field(default_factory=dict, sa_column=Column(JSON))

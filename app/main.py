@@ -1,5 +1,7 @@
 from datetime import datetime
+import json
 from math import ceil
+import re
 from uuid import UUID
 from fastapi import FastAPI, HTTPException, Query, status
 import requests
@@ -11,8 +13,6 @@ from .apis.config import api_settings as settings
 from googletrans import Translator
 from google import genai
 
-client = genai.Client(api_key=settings.GEMINI_KEY)
-
 
 async def lifespan_handler(app: FastAPI):
     await create_db_tables()
@@ -20,6 +20,8 @@ async def lifespan_handler(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan_handler)
+
+client = genai.Client(api_key=settings.GEMINI_KEY)
 translator = Translator()
 
 
@@ -209,7 +211,7 @@ async def calcular_trajeto_completo(
     service: TrajetoServiceDep,
     numero_origem: str = Query(None),
     numero_destino: str = Query(None),
-    criptografia: str = Query(None),
+    senha_trajeto: str = Query(None),
     dias_previsao_clima: int = 14,
 ):
     if dias_previsao_clima < 1 or dias_previsao_clima > 14:
@@ -305,14 +307,39 @@ async def calcular_trajeto_completo(
         "informacoes_basicas": informacoes_basicas_trajeto,
         "rota": trechos_filtrados,
     }
-    if criptografia:
-        return await service.add(criptografia, trajeto)
+    if senha_trajeto:
+        return await service.add_trajeto(senha_trajeto, trajeto)
     return trajeto
 
 
 @app.get("/retornar_trajeto")
-async def retornar_trajeto(id: UUID, senha: str, service: TrajetoServiceDep):
-    return await service.get(id, senha)
+async def retornar_trajeto(id: UUID, senha_trajeto: str, service: TrajetoServiceDep):
+    return await service.get_trajeto(id, senha_trajeto)
+
+
+@app.post("/ai_insights")
+async def ai_insights(
+    id: UUID, senha_trajeto: str, service: TrajetoServiceDep, salvar_no_banco: int = 0
+):
+    dados_trajeto = await retornar_trajeto(id, senha_trajeto, service)
+    prompt = settings.PROMPT_BASE.format(dados_trajeto=dados_trajeto)
+    response = client.models.generate_content(
+        model=settings.GEMINI_MODEL,
+        contents=prompt,
+    )
+    resposta_formatada = json.loads(limpar_resposta(response.text))
+    if salvar_no_banco == 1:
+        await service.add_insight(id, senha_trajeto, resposta_formatada)
+    return resposta_formatada
+
+
+@app.get("/retornar_insight")
+async def retornar_insight(id: UUID, senha_trajeto: str, service: TrajetoServiceDep):
+    return await service.get_insight(id, senha_trajeto)
+
+
+def limpar_resposta(texto: str):
+    return re.sub(r"^```json\s*|\s*```$", "", texto, flags=re.MULTILINE)
 
 
 def formatar_numero(texto: str):

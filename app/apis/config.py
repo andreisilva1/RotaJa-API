@@ -18,6 +18,8 @@ class APIConfiguration(BaseSettings):
     WEATHER_API_KEY: str
     WEATHER_API_URL: str
     GEMINI_KEY: str
+    GEMINI_MODEL: str
+    PROMPT_BASE: str
 
 
 api_settings = APIConfiguration()
