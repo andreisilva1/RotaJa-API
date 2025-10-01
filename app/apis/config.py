@@ -17,6 +17,7 @@ class APIConfiguration(BaseSettings):
     LOCATIONIQ_REVERSE_GEOCODING_URL: str
     WEATHER_API_KEY: str
     WEATHER_API_URL: str
+    GEMINI_KEY: str
 
 
 api_settings = APIConfiguration()

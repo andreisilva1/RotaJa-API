@@ -1,18 +1,31 @@
 from datetime import datetime
 from math import ceil
+from uuid import UUID
 from fastapi import FastAPI, HTTPException, Query, status
 import requests
 from scalar_fastapi import get_scalar_api_reference
+
+from app.database.session import create_db_tables
+from app.dependencies import TrajetoServiceDep
 from .apis.config import api_settings as settings
 from googletrans import Translator
+from google import genai
 
-app = FastAPI()
+client = genai.Client(api_key=settings.GEMINI_KEY)
+
+
+async def lifespan_handler(app: FastAPI):
+    await create_db_tables()
+    yield
+
+
+app = FastAPI(lifespan=lifespan_handler)
 translator = Translator()
 
 
 @app.get("/scalar", include_in_schema=False)
 def get_scalar_docs():
-    return get_scalar_api_reference(openapi_url=app.openapi_url, title="AgilizaCEP API")
+    return get_scalar_api_reference(openapi_url=app.openapi_url, title="RotaJá API")
 
 
 @app.get("/buscar/{cep}")
@@ -193,8 +206,10 @@ async def calcular_trajeto_simples(
 async def calcular_trajeto_completo(
     cep_origem: str,
     cep_destino: str,
+    service: TrajetoServiceDep,
     numero_origem: str = Query(None),
     numero_destino: str = Query(None),
+    criptografia: str = Query(None),
     dias_previsao_clima: int = 14,
 ):
     if dias_previsao_clima < 1 or dias_previsao_clima > 14:
@@ -286,11 +301,18 @@ async def calcular_trajeto_completo(
                 }
                 previsao_clima.append(clima_dia)
             trecho["clima"] = previsao_clima
-
-    return {
+    trajeto = {
         "informacoes_basicas": informacoes_basicas_trajeto,
         "rota": trechos_filtrados,
     }
+    if criptografia:
+        return await service.add(criptografia, trajeto)
+    return trajeto
+
+
+@app.get("/retornar_trajeto")
+async def retornar_trajeto(id: UUID, senha: str, service: TrajetoServiceDep):
+    return await service.get(id, senha)
 
 
 def formatar_numero(texto: str):
