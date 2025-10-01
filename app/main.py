@@ -159,6 +159,12 @@ async def retornar_trafego(cep: str):
             "tempoAproximado_em_VelocidadeLivre_minutos": ceil(
                 dados_congestionamento["flowSegmentData"]["freeFlowTravelTime"] / 60
             ),
+            "tempoAproximado_em_VelocidadeAtual_horas": ceil(
+                dados_congestionamento["flowSegmentData"]["currentTravelTime"] / 3600
+            ),
+            "tempoAproximado_em_VelocidadeLivre_horas": ceil(
+                dados_congestionamento["flowSegmentData"]["freeFlowTravelTime"] / 3600
+            ),
             "confiabilidade": dados_congestionamento["flowSegmentData"]["confidence"],
             "rua_fechada": dados_congestionamento["flowSegmentData"]["roadClosure"],
         }
@@ -193,6 +199,9 @@ async def calcular_trajeto_simples(
             ),
             "tempo_estimado_em_minutos": ceil(
                 trajeto_json["routes"][0]["summary"]["travelTimeInSeconds"] / 60
+            ),
+            "tempo_estimado_em_horas": ceil(
+                trajeto_json["routes"][0]["summary"]["travelTimeInSeconds"] / 3600
             ),
             "veiculo_exemplo": trajeto_json["routes"][0]["sections"][0]["travelMode"],
         }
@@ -235,6 +244,9 @@ async def calcular_trajeto_completo(
             ),
             "tempo_estimado_em_minutos": ceil(
                 trajeto_json["routes"][0]["summary"]["travelTimeInSeconds"] / 60
+            ),
+            "tempo_estimado_em_horas": ceil(
+                trajeto_json["routes"][0]["summary"]["travelTimeInSeconds"] / 3600
             ),
             "veiculo_exemplo": trajeto_json["routes"][0]["sections"][0]["travelMode"],
         }
@@ -281,12 +293,13 @@ async def calcular_trajeto_completo(
         if trecho["cep"] != "não fornecido":
             trafego_atual = await retornar_trafego(trecho["cep"].replace("-", ""))
             trecho["trafego"] = trafego_atual
-            cep_infos = await buscar_cep(trecho["cep"])
+            coordenadas = await obter_coordenadas(trecho["cep"], numero=None)
 
-            cidade = cep_infos.get("localidade")
-            response = requests.get(
-                f"{settings.WEATHER_API_URL}{cidade}&days={dias_previsao_clima}&key={settings.WEATHER_API_KEY}"
-            )
+            longitude, latitude = coordenadas["lon"], coordenadas["lat"]
+
+            url = f"{settings.WEATHER_API_URL}{settings.WEATHER_API_KEY}&q={latitude},{longitude}&days={dias_previsao_clima}"
+
+            response = requests.get(url)
 
             clima = response.json()
             for dia in clima["forecast"]["forecastday"]:
@@ -314,7 +327,8 @@ async def calcular_trajeto_completo(
 
 @app.get("/retornar_trajeto")
 async def retornar_trajeto(id: UUID, senha_trajeto: str, service: TrajetoServiceDep):
-    return await service.get_trajeto(id, senha_trajeto)
+    trajeto = await service.get_trajeto(id, senha_trajeto)
+    return trajeto.model_dump(exclude=["senha"])
 
 
 @app.post("/ai_insights")
@@ -336,6 +350,16 @@ async def ai_insights(
 @app.get("/retornar_insight")
 async def retornar_insight(id: UUID, senha_trajeto: str, service: TrajetoServiceDep):
     return await service.get_insight(id, senha_trajeto)
+
+
+@app.delete("/excluir_trajeto_salvo")
+async def excluir_trajeto(id: UUID, senha_trajeto: str, service: TrajetoServiceDep):
+    return await service.delete_trajeto(id, senha_trajeto)
+
+
+@app.delete("/excluir_insight_salvo")
+async def excluir_insight(id: UUID, senha_trajeto: str, service: TrajetoServiceDep):
+    return await service.delete_insight(id, senha_trajeto)
 
 
 def limpar_resposta(texto: str):
