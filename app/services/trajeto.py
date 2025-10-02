@@ -60,12 +60,12 @@ class TrajetoService:
 
     async def get_insight(self, id: UUID, senha_trajeto: str):
         trajeto = await self.get_trajeto(id, senha_trajeto)
-        if not trajeto or not trajeto["insights"]:
+        if not trajeto or not trajeto.insights:
             return {
                 "detail": "Não foram encontrados insights para o trajeto fornecido."
             }
         else:
-            return trajeto["insights"]
+            return trajeto.insights
 
     async def delete_trajeto(self, id: UUID, senha_trajeto: str):
         trajeto = await self.get_trajeto(id, senha_trajeto)

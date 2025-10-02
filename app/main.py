@@ -66,7 +66,7 @@ async def formatar_cep(cep: str, numero: str = Query(None)):
 @app.get("/coordenadas/{cep}")
 async def obter_coordenadas(cep: str, numero: str = Query(None)):
     endereco_completo = await formatar_cep(cep, numero)
-    response = requests.get(f"{settings.LOCATIONIQ_URL}{endereco_completo}&format=json")
+    response = requests.get(f"{settings.LOCATIONIQ_URL}&q={endereco_completo}&format=json")
     if response.status_code == 200:
         coordenadas = response.json()
         lat = coordenadas[0].get("lat")
@@ -95,8 +95,7 @@ async def obter_coordenadas(cep: str, numero: str = Query(None)):
 async def pontos_de_referencia(
     cep: str, raio_em_metros: float = 300, numero: str = Query(None)
 ):
-    endereco_completo = await formatar_cep(cep, numero if numero else None)
-    coordenadas = await obter_coordenadas(endereco_completo)
+    coordenadas = await obter_coordenadas(cep, numero)
     longitude, latitude = coordenadas["lon"], coordenadas["lat"]
     response = requests.get(
         f"{settings.OVERPASS_URL}{raio_em_metros},{latitude},{longitude});out;"
@@ -156,14 +155,15 @@ async def retornar_trafego(cep: str):
             "tempoAproximado_em_VelocidadeAtual_minutos": ceil(
                 dados_congestionamento["flowSegmentData"]["currentTravelTime"] / 60
             ),
-            "tempoAproximado_em_VelocidadeLivre_minutos": ceil(
-                dados_congestionamento["flowSegmentData"]["freeFlowTravelTime"] / 60
+            "tempoAproximado_em_VelocidadeLivre_minutos": round(
+                dados_congestionamento["flowSegmentData"]["freeFlowTravelTime"] / 60, 2
             ),
             "tempoAproximado_em_VelocidadeAtual_horas": ceil(
                 dados_congestionamento["flowSegmentData"]["currentTravelTime"] / 3600
             ),
-            "tempoAproximado_em_VelocidadeLivre_horas": ceil(
-                dados_congestionamento["flowSegmentData"]["freeFlowTravelTime"] / 3600
+            "tempoAproximado_em_VelocidadeLivre_horas": round(
+                dados_congestionamento["flowSegmentData"]["freeFlowTravelTime"] / 3600,
+                2,
             ),
             "confiabilidade": dados_congestionamento["flowSegmentData"]["confidence"],
             "rua_fechada": dados_congestionamento["flowSegmentData"]["roadClosure"],
@@ -200,8 +200,8 @@ async def calcular_trajeto_simples(
             "tempo_estimado_em_minutos": ceil(
                 trajeto_json["routes"][0]["summary"]["travelTimeInSeconds"] / 60
             ),
-            "tempo_estimado_em_horas": ceil(
-                trajeto_json["routes"][0]["summary"]["travelTimeInSeconds"] / 3600
+            "tempo_estimado_em_horas": round(
+                trajeto_json["routes"][0]["summary"]["travelTimeInSeconds"] / 3600, 2
             ),
             "veiculo_exemplo": trajeto_json["routes"][0]["sections"][0]["travelMode"],
         }
@@ -245,8 +245,8 @@ async def calcular_trajeto_completo(
             "tempo_estimado_em_minutos": ceil(
                 trajeto_json["routes"][0]["summary"]["travelTimeInSeconds"] / 60
             ),
-            "tempo_estimado_em_horas": ceil(
-                trajeto_json["routes"][0]["summary"]["travelTimeInSeconds"] / 3600
+            "tempo_estimado_em_horas": round(
+                trajeto_json["routes"][0]["summary"]["travelTimeInSeconds"] / 3600, 2
             ),
             "veiculo_exemplo": trajeto_json["routes"][0]["sections"][0]["travelMode"],
         }
@@ -263,7 +263,7 @@ async def calcular_trajeto_completo(
     )
     for ponto in rota_filtrada:
         response = requests.get(
-            f"{settings.LOCATIONIQ_REVERSE_GEOCODING_URL}{settings.LOCATIONIQ_KEY}&lat={ponto['latitude']}&lon={ponto['longitude']}&format=json"
+            f"{settings.LOCATIONIQ_REVERSE_GEOCODING_URL}{settings.LOCATIONIQ_KEY}&q=&lat={ponto['latitude']}&lon={ponto['longitude']}&format=json"
         )
         trechos.append(response.json())
 
