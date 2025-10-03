@@ -1,11 +1,7 @@
 from fastapi import FastAPI
-from scalar_fastapi import get_scalar_api_reference
 
 from .database.session import create_db_tables
 from .routers import cep, insights, trajeto
-from .apis.config import api_settings as settings
-from googletrans import Translator
-from google import genai
 
 
 async def lifespan_handler(app: FastAPI):
@@ -24,7 +20,9 @@ description = """
 ## Observações
 - Em caso de dúvidas, sugestões ou para relatar algum problema, envie um email para: contato@rotaja.com.br
 """
+
 app = FastAPI(
+    docs_url="/",
     lifespan=lifespan_handler,
     title="RotaJá API",
     version="1.0.0",
@@ -34,11 +32,3 @@ app = FastAPI(
 app.include_router(cep.router)
 app.include_router(trajeto.router)
 app.include_router(insights.router)
-
-client = genai.Client(api_key=settings.GEMINI_KEY)
-translator = Translator()
-
-
-@app.get("/scalar", include_in_schema=False)
-def get_scalar_docs():
-    return get_scalar_api_reference(openapi_url=app.openapi_url, title="RotaJá API")
