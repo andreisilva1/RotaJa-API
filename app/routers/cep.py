@@ -135,11 +135,11 @@ async def retornar_trafego(cep: str):
             "tempoAproximado_em_VelocidadeAtual_minutos": ceil(
                 dados_congestionamento["flowSegmentData"]["currentTravelTime"] / 60
             ),
-            "tempoAproximado_em_VelocidadeLivre_minutos": round(
-                dados_congestionamento["flowSegmentData"]["freeFlowTravelTime"] / 60, 2
+            "tempoAproximado_em_VelocidadeLivre_minutos": ceil(
+                dados_congestionamento["flowSegmentData"]["freeFlowTravelTime"] / 60
             ),
-            "tempoAproximado_em_VelocidadeAtual_horas": ceil(
-                dados_congestionamento["flowSegmentData"]["currentTravelTime"] / 3600
+            "tempoAproximado_em_VelocidadeAtual_horas": round(
+                dados_congestionamento["flowSegmentData"]["currentTravelTime"] / 3600, 2
             ),
             "tempoAproximado_em_VelocidadeLivre_horas": round(
                 dados_congestionamento["flowSegmentData"]["freeFlowTravelTime"] / 3600,
