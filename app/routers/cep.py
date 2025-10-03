@@ -1,5 +1,4 @@
 from math import ceil
-from math import ceil
 from fastapi import HTTPException, Query, status, APIRouter
 import requests
 

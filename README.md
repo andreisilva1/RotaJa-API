@@ -221,7 +221,7 @@ Retorno:
     "velocidadeLivre": 23,
     "tempoAproximado_em_VelocidadeAtual_minutos": 3,
     "tempoAproximado_em_VelocidadeLivre_minutos": 2.12,
-    "tempoAproximado_em_VelocidadeAtual_horas": 1,
+    "tempoAproximado_em_VelocidadeAtual_horas": 0.05,
     "tempoAproximado_em_VelocidadeLivre_horas": 0.04,
     "confiabilidade": 1,
     "rua_fechada": false
